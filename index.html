@@ -160,7 +160,7 @@
         }
         textarea {
             resize: vertical;
-            min-height: 200px;
+            min-height: 220px;
             font-size: 0.95rem;
             line-height: 1.5;
             background-color: #f8f9fa;
@@ -201,12 +201,20 @@
                 <div class="alert" id="model-mismatch-alert">⚠️ 警告：手選車型與車身碼第6碼判斷之車型不符！</div>
             </div>
             <div class="form-group">
+                <label for="carColor">車色 (選填)</label>
+                <select id="carColor" onchange="updateNote()">
+                    <option value="">-- 請選擇車色 --</option>
+                    <option value="白色">白色</option>
+                    <option value="藍色">藍色</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label for="salesRep">業代人員 (選填)</label>
-                <input type="text" id="salesRep" placeholder="例如：李大寶" oninput="updateNote()">
+                <input type="text" id="salesRep" placeholder="例如：彭瑞棟" oninput="updateNote()">
             </div>
             <div class="form-group">
                 <label for="location">存放(施工)地點 (必填)</label>
-                <input type="text" id="location" placeholder="例如：南港直營廠" oninput="updateNote()">
+                <input type="text" id="location" placeholder="例如：北台中加樂旺" oninput="updateNote()">
             </div>
             <div class="form-group">
                 <label for="deliveryDate">交車日 (選填)</label>
@@ -214,7 +222,7 @@
             </div>
             <div class="form-group" style="grid-column: 1 / -1;">
                 <label for="otherInfo">補充事項 (選填)</label>
-                <input type="text" id="otherInfo" placeholder="例如：盡速施工" oninput="updateNote()">
+                <input type="text" id="otherInfo" placeholder="例如：盡速施工、請留廢料" oninput="updateNote()">
             </div>
         </div>
     </div>
@@ -545,6 +553,7 @@ function updatePartInfo(partKey) {
 function updateNote() {
     const vin = document.getElementById('vin').value.trim().toUpperCase();
     const carModel = document.getElementById('carModel').value;
+    const carColor = document.getElementById('carColor').value;
     const salesRep = document.getElementById('salesRep').value.trim();
     const location = document.getElementById('location').value.trim();
     const rawDeliveryDate = document.getElementById('deliveryDate').value;
@@ -620,6 +629,7 @@ function updateNote() {
     let lines = [
         `車身碼：${vin}`,
         `車型：${carModel}`,
+        `車色：${carColor}`,
         `業代：${salesRep}`,
         `存放(施工)地點：${location}`,
         `${frontStr ? frontStr : '前擋：'}`,
