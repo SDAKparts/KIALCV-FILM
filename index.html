@@ -635,7 +635,7 @@ function updateNote() {
         `${frontStr ? frontStr : '前擋：'}`,
         `${bodyStr ? bodyStr : '車身：'}`,
         `交車日：${formattedDate}`,
-        `其他：${otherInfo}`
+        `補充事項：${otherInfo}`
     ];
 
     document.getElementById('finalNote').value = lines.join('\n');
