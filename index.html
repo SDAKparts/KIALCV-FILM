@@ -3,7 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- 防網頁快取 Meta 標籤 -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
     <title>卡旺隔熱紙下單小幫手</title>
+    <!-- 引入 SheetJS 庫以解析 Excel 檔案 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js?v=0.18.5"></script>
     <style>
         :root {
             --primary: #0056b3;
@@ -239,9 +247,6 @@
                     <label>品牌與系列</label>
                     <select id="front-brand-series" onchange="onBrandSeriesChange('front')">
                         <option value="">-- 請選擇品牌系列 --</option>
-                        <option value="Smith|Bella系列">Smith Bella系列</option>
-                        <option value="FSK|KS系列">FSK KS系列</option>
-                        <option value="3M|8803 PLUS系列">3M 8803 PLUS系列</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -251,12 +256,13 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>透光度 (固定)</label>
+                    <label>透光度</label>
                     <select id="front-vlt" disabled onchange="updateNote()">
                         <option value="">-- 請先選規格 --</option>
                     </select>
                 </div>
             </div>
+            <div class="alert" id="front-mismatch-alert">⚠️ 警告：所選之隔熱紙件號規格與上方設定之車型不符！</div>
             <div class="part-number-box">
                 <span>件號：</span>
                 <span class="part-number-text" id="front-partno">---</span>
@@ -272,9 +278,6 @@
                     <label>品牌與系列</label>
                     <select id="body-brand-series" onchange="onBrandSeriesChange('body')">
                         <option value="">-- 請選擇品牌系列 --</option>
-                        <option value="Smith|Bella系列">Smith Bella系列</option>
-                        <option value="FSK|KS系列">FSK KS系列</option>
-                        <option value="3M|8803 PLUS系列">3M 8803 PLUS系列</option>
                     </select>
                 </div>
                 <div class="form-group" style="grid-column: span 2;">
@@ -284,6 +287,7 @@
                     </select>
                 </div>
             </div>
+            <div class="alert" id="body-mismatch-alert">⚠️ 警告：所選之隔熱紙件號規格與上方設定之車型不符！</div>
 
             <!-- 車身透光度動態顯示區域 -->
             <label style="margin-top: 6px; display: block; color: var(--primary);">車身透光度選擇：</label>
@@ -291,7 +295,7 @@
             <!-- 單廂 / 大單廂 用 -->
             <div id="single-vlt-container" class="vlt-subgrid" style="display: grid;">
                 <div class="form-group">
-                    <label>車身透光度</label>
+                    <label>透光度</label>
                     <select id="body-vlt-single" onchange="updateNote()">
                         <option value="">-- 請先選規格 --</option>
                     </select>
@@ -331,30 +335,130 @@
 </div>
 
 <script>
-// 卡旺隔熱紙資料庫
-const DATABASE = [
-  // 前擋
-  {"brand": "Smith", "part_type": "前擋", "series": "Bella系列", "part_no": "99PVYKAW122", "raw_cars": "全車型", "cars": ["單廂", "大單廂", "雙廂"], "vlt_display": "Bella 70"},
-  {"brand": "FSK", "part_type": "前擋", "series": "KS系列", "part_no": "99PVYKAWFSK122", "raw_cars": "全車型", "cars": ["單廂", "大單廂", "雙廂"], "vlt_display": "KS 78"},
-  {"brand": "3M", "part_type": "前擋", "series": "8803 PLUS系列", "part_no": "99PVYKAW3M122", "raw_cars": "全車型", "cars": ["單廂", "大單廂", "雙廂"], "vlt_display": "P 70"},
+let DATABASE = [];
+const PART_TYPES_MAP = { "front": "前擋", "body": "車身" };
 
-  // 車身 - 單廂
-  {"brand": "Smith", "part_type": "車身", "series": "Bella系列", "part_no": "99PVYKAW120S", "raw_cars": "單廂", "cars": ["單廂"], "front_vlts": ["40", "70"], "rear_vlts": ["05", "15", "30", "40", "70"]},
-  {"brand": "FSK", "part_type": "車身", "series": "KS系列", "part_no": "99PVYKAWFSK120S", "raw_cars": "單廂", "cars": ["單廂"], "front_vlts": ["40"], "rear_vlts": ["20", "40"]},
-  {"brand": "3M", "part_type": "車身", "series": "8803 PLUS系列", "part_no": "99PVYKAW3M120S", "raw_cars": "單廂", "cars": ["單廂"], "front_vlts": ["40", "70"], "rear_vlts": ["18", "35", "40", "70"]},
-
-  // 車身 - 大單廂
-  {"brand": "Smith", "part_type": "車身", "series": "Bella系列", "part_no": "99PVYKAW120K", "raw_cars": "大單廂", "cars": ["大單廂"], "front_vlts": ["40", "70"], "rear_vlts": ["05", "15", "30", "40", "70"]},
-  {"brand": "FSK", "part_type": "車身", "series": "KS系列", "part_no": "99PVYKAWFSK120K", "raw_cars": "大單廂", "cars": ["大單廂"], "front_vlts": ["40"], "rear_vlts": ["20", "40"]},
-  {"brand": "3M", "part_type": "車身", "series": "8803 PLUS系列", "part_no": "99PVYKAW3M120K", "raw_cars": "大單廂", "cars": ["大單廂"], "front_vlts": ["40", "70"], "rear_vlts": ["18", "35", "40", "70"]},
-
-  // 車身 - 雙廂
-  {"brand": "Smith", "part_type": "車身", "series": "Bella系列", "part_no": "99PVYKAW120D", "raw_cars": "雙廂", "cars": ["雙廂"], "front_vlts": ["40", "70"], "rear_vlts": ["05", "15", "30", "40", "70"]},
-  {"brand": "FSK", "part_type": "車身", "series": "KS系列", "part_no": "99PVYKAWFSK120D", "raw_cars": "雙廂", "cars": ["雙廂"], "front_vlts": ["40"], "rear_vlts": ["20", "40"]},
-  {"brand": "3M", "part_type": "車身", "series": "8803 PLUS系列", "part_no": "99PVYKAW3M120D", "raw_cars": "雙廂", "cars": ["雙廂"], "front_vlts": ["40", "70"], "rear_vlts": ["18", "35", "40", "70"]}
+// 預設備用資料集
+const DEFAULT_FALLBACK_DATA = [
+  {"brand": "Smith", "part_type": "前擋", "series": "Bella", "part_no": "99PVYPUT122", "raw_cars": "全車型", "cars": ["單廂", "大單廂", "雙廂"], "vlt_val": "70", "vlt_num": 70},
+  {"brand": "Smith", "part_type": "車身", "series": "Bella", "part_no": "99PVYPUT120S", "raw_cars": "單廂", "cars": ["單廂"], "front_vlts": ["40", "70"], "rear_vlts": ["05", "15", "30", "40", "70"]},
+  {"brand": "Smith", "part_type": "車身", "series": "Bella", "part_no": "99PVYPUT120L", "raw_cars": "大單廂", "cars": ["大單廂"], "front_vlts": ["40", "70"], "rear_vlts": ["05", "15", "30", "40", "70"]},
+  {"brand": "Smith", "part_type": "車身", "series": "Bella", "part_no": "99PVYPUT120D", "raw_cars": "雙廂", "cars": ["雙廂"], "front_vlts": ["40", "70"], "rear_vlts": ["05", "15", "30", "40", "70"]},
+  {"brand": "FSK", "part_type": "前擋", "series": "KS", "part_no": "99PVYPUFSKB122", "raw_cars": "全車型", "cars": ["單廂", "大單廂", "雙廂"], "vlt_val": "78", "vlt_num": 78},
+  {"brand": "FSK", "part_type": "車身", "series": "KS", "part_no": "99PVYPUFSKB120S", "raw_cars": "單廂", "cars": ["單廂"], "front_vlts": ["40"], "rear_vlts": ["20", "40"]},
+  {"brand": "FSK", "part_type": "車身", "series": "KS", "part_no": "99PVYPUFSKB120L", "raw_cars": "大單廂", "cars": ["大單廂"], "front_vlts": ["40"], "rear_vlts": ["20", "40"]},
+  {"brand": "FSK", "part_type": "車身", "series": "KS", "part_no": "99PVYPUFSKB120D", "raw_cars": "雙廂", "cars": ["雙廂"], "front_vlts": ["40"], "rear_vlts": ["20", "40"]},
+  {"brand": "3M", "part_type": "前擋", "series": "8803 Plus", "part_no": "99PVY3M35C", "raw_cars": "全車型", "cars": ["單廂", "大單廂", "雙廂"], "vlt_val": "70", "vlt_num": 70},
+  {"brand": "3M", "part_type": "車身", "series": "8803 Plus", "part_no": "99PVY3M20CS", "raw_cars": "單廂", "cars": ["單廂"], "front_vlts": ["40", "70"], "rear_vlts": ["18", "35", "40", "70"]},
+  {"brand": "3M", "part_type": "車身", "series": "8803 Plus", "part_no": "99PVY3M20CL", "raw_cars": "大單廂", "cars": ["大單廂"], "front_vlts": ["40", "70"], "rear_vlts": ["18", "35", "40", "70"]},
+  {"brand": "3M", "part_type": "車身", "series": "8803 Plus", "part_no": "99PVY3M20CD", "raw_cars": "雙廂", "cars": ["雙廂"], "front_vlts": ["40", "70"], "rear_vlts": ["18", "35", "40", "70"]}
 ];
 
-const PART_TYPES_MAP = { "front": "前擋", "body": "車身" };
+window.addEventListener('DOMContentLoaded', () => {
+    loadDatabaseExcel();
+});
+
+async function loadDatabaseExcel() {
+    try {
+        const timestamp = new Date().getTime();
+        const response = await fetch(`database.xlsx?t=${timestamp}`, {
+            cache: 'no-store'
+        });
+        
+        if (!response.ok) throw new Error('無法讀取 database.xlsx 檔案');
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        const rawJson = XLSX.utils.sheet_to_json(worksheet);
+
+        DATABASE = rawJson.map(row => {
+            const brand = row['品牌'] ? String(row['品牌']).trim() : '';
+            const part_type = row['位置'] ? String(row['位置']).trim() : '';
+            const series = row['系列'] ? String(row['系列']).trim() : '';
+            const part_no = row['件號'] ? String(row['件號']).trim() : '';
+            const raw_cars = row['車型'] ? String(row['車型']).trim() : '';
+            const vlt_str = row['透光度'] !== undefined ? String(row['透光度']).trim() : '';
+
+            let carsArr = (raw_cars === "全車型") ? ["單廂", "大單廂", "雙廂"] : [raw_cars];
+            let rawVltList = vlt_str.split(',').map(s => s.trim()).filter(s => s);
+
+            let vlt_val = '';
+            let vlt_num = 0;
+            let frontVlts = [];
+            let rearVlts = [];
+
+            if (part_type === '前擋') {
+                vlt_num = parseFloat(vlt_str) || 0;
+                vlt_val = vlt_str; // 選單僅呈現單純數字
+            } else {
+                frontVlts = rawVltList.filter(v => (parseFloat(v) || 0) >= 38);
+                rearVlts = rawVltList;
+            }
+
+            return {
+                brand,
+                part_type,
+                series,
+                series_display: row['系列顯示'] ? String(row['系列顯示']).trim() : series,
+                part_no,
+                raw_cars,
+                cars: carsArr,
+                vlt_val,
+                vlt_num,
+                front_vlts: frontVlts,
+                rear_vlts: rearVlts
+            };
+        });
+
+        // 依前擋法規過濾前擋項目（前擋透光度需 >= 68）
+        DATABASE = DATABASE.filter(item => {
+            if (item.part_type === '前擋') {
+                return item.vlt_num >= 68;
+            }
+            return true;
+        });
+
+    } catch (err) {
+        console.warn('無法從外部讀取 database.xlsx，切換至內建預設資料庫:', err);
+        DATABASE = DEFAULT_FALLBACK_DATA;
+    }
+
+    initBrandSeriesOptions();
+}
+
+function initBrandSeriesOptions() {
+    ['front', 'body'].forEach(partKey => {
+        const partType = PART_TYPES_MAP[partKey];
+        const selectElem = document.getElementById(`${partKey}-brand-series`);
+        
+        const uniqueCombinations = [];
+        const seen = new Set();
+
+        DATABASE.filter(item => item.part_type === partType).forEach(item => {
+            const key = `${item.brand}|${item.series}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueCombinations.push({
+                    brand: item.brand,
+                    series: item.series,
+                    label: `${item.brand} ${item.series}`
+                });
+            }
+        });
+
+        selectElem.innerHTML = '<option value="">-- 請選擇品牌系列 --</option>';
+        uniqueCombinations.forEach(combo => {
+            const opt = document.createElement('option');
+            opt.value = `${combo.brand}|${combo.series}`;
+            opt.textContent = combo.label;
+            selectElem.appendChild(opt);
+        });
+    });
+}
 
 function onVinInput() {
     const vinInput = document.getElementById('vin');
@@ -403,18 +507,6 @@ function checkVinModelMismatch() {
 
 function onCarModelChange() {
     checkVinModelMismatch();
-
-    const carModel = document.getElementById('carModel').value;
-    const singleContainer = document.getElementById('single-vlt-container');
-    const doubleContainer = document.getElementById('double-vlt-container');
-
-    if (carModel === "雙廂") {
-        singleContainer.style.display = 'none';
-        doubleContainer.style.display = 'grid';
-    } else {
-        singleContainer.style.display = 'grid';
-        doubleContainer.style.display = 'none';
-    }
 
     ['front', 'body'].forEach(p => {
         const bsValue = document.getElementById(`${p}-brand-series`).value;
@@ -480,6 +572,35 @@ function clearVltSelects(partKey) {
     }
 }
 
+// 輔助函式：填充透光度選單，若僅有一種選擇則自動帶出
+function populateVltSelect(selectElem, vltList) {
+    selectElem.innerHTML = '';
+    if (!vltList || vltList.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '-- 無適用透光度 --';
+        selectElem.appendChild(opt);
+    } else if (vltList.length === 1) {
+        const opt = document.createElement('option');
+        opt.value = vltList[0];
+        opt.textContent = vltList[0];
+        selectElem.appendChild(opt);
+        selectElem.value = vltList[0];
+    } else {
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '-- 請選擇 --';
+        selectElem.appendChild(defaultOpt);
+
+        vltList.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = v;
+            selectElem.appendChild(opt);
+        });
+    }
+}
+
 function onSpecChange(partKey) {
     const bsValue = document.getElementById(`${partKey}-brand-series`).value;
     const specIndex = document.getElementById(`${partKey}-spec`).value;
@@ -495,36 +616,57 @@ function onSpecChange(partKey) {
         if (selectedItem) {
             if (partKey === 'front') {
                 const select = document.getElementById('front-vlt');
-                select.innerHTML = `<option value="${selectedItem.vlt_display}">${selectedItem.vlt_display}</option>`;
+                // 前擋下拉顯示純透光度數字
+                select.innerHTML = `<option value="${selectedItem.vlt_val}">${selectedItem.vlt_val}</option>`;
                 select.disabled = false;
             } else if (partKey === 'body') {
+                const singleContainer = document.getElementById('single-vlt-container');
+                const doubleContainer = document.getElementById('double-vlt-container');
+
+                // 依選中的車身規格決定顯示介面
+                const isDoubleCabinSpec = selectedItem.cars.includes('雙廂') && selectedItem.raw_cars === '雙廂';
+
+                if (isDoubleCabinSpec) {
+                    singleContainer.style.display = 'none';
+                    doubleContainer.style.display = 'grid';
+                } else {
+                    singleContainer.style.display = 'grid';
+                    doubleContainer.style.display = 'none';
+                }
+
                 const frontVlts = selectedItem.front_vlts || [];
                 const rearVlts = selectedItem.rear_vlts || [];
                 
-                ['body-vlt-single', 'body-vlt-front'].forEach(id => {
-                    const select = document.getElementById(id);
-                    select.innerHTML = '<option value="">-- 請選擇 --</option>';
-                    frontVlts.forEach(v => {
-                        const opt = document.createElement('option');
-                        opt.value = v;
-                        opt.textContent = v;
-                        select.appendChild(opt);
-                    });
-                });
-
-                const rearSelect = document.getElementById('body-vlt-rear');
-                rearSelect.innerHTML = '<option value="">-- 請選擇 --</option>';
-                rearVlts.forEach(v => {
-                    const opt = document.createElement('option');
-                    opt.value = v;
-                    opt.textContent = v;
-                    rearSelect.appendChild(opt);
-                });
+                populateVltSelect(document.getElementById('body-vlt-single'), frontVlts);
+                populateVltSelect(document.getElementById('body-vlt-front'), frontVlts);
+                populateVltSelect(document.getElementById('body-vlt-rear'), rearVlts);
             }
         }
     }
 
     updatePartInfo(partKey);
+}
+
+function checkPartModelMismatch(partKey) {
+    const carModel = document.getElementById('carModel').value;
+    const bsValue = document.getElementById(`${partKey}-brand-series`).value;
+    const specIndex = document.getElementById(`${partKey}-spec`).value;
+    const alertElem = document.getElementById(`${partKey}-mismatch-alert`);
+    const partType = PART_TYPES_MAP[partKey];
+
+    if (carModel && bsValue && specIndex !== "") {
+        const [brand, series] = bsValue.split('|');
+        const matches = DATABASE.filter(item => item.brand === brand && item.part_type === partType && item.series === series);
+        const selectedItem = matches[specIndex];
+
+        if (selectedItem && !selectedItem.cars.includes(carModel)) {
+            alertElem.style.display = 'block';
+        } else {
+            alertElem.style.display = 'none';
+        }
+    } else {
+        alertElem.style.display = 'none';
+    }
 }
 
 function updatePartInfo(partKey) {
@@ -547,7 +689,17 @@ function updatePartInfo(partKey) {
         partNoElem.textContent = '---';
     }
 
+    checkPartModelMismatch(partKey);
     updateNote();
+}
+
+function formatFilmName(brand, series, vlt) {
+    if (!brand && !series) return '';
+    if (series.includes('8803') || series.includes('Plus')) {
+        return `3M P${vlt}`;
+    }
+    const cleanSeries = series.replace(/系列$/g, '');
+    return `${brand} ${cleanSeries} ${vlt}`.trim();
 }
 
 function updateNote() {
@@ -559,84 +711,83 @@ function updateNote() {
     const rawDeliveryDate = document.getElementById('deliveryDate').value;
     const otherInfo = document.getElementById('otherInfo').value.trim();
 
-    // 格式化交車日日期 (YYYY/MM/DD)
     let formattedDate = '';
     if (rawDeliveryDate) {
         formattedDate = rawDeliveryDate.replace(/-/g, '/');
     }
 
-    // 前擋文字
+    // 前擋系統備註格式化
     const frontBs = document.getElementById('front-brand-series').value;
     let frontStr = '';
     if (frontBs) {
-        const [fBrand] = frontBs.split('|');
-        if (fBrand === "3M") frontStr = `前擋：3M P70`;
-        else if (fBrand === "Smith") frontStr = `前擋：Smith Bella 70`;
-        else if (fBrand === "FSK") frontStr = `前擋：FSK KS78`;
+        const [fBrand, fSeries] = frontBs.split('|');
+        const specIndex = document.getElementById('front-spec').value;
+        const matches = DATABASE.filter(item => item.brand === fBrand && item.part_type === "前擋" && item.series === fSeries);
+        const selectedItem = matches[specIndex];
+        const vltVal = document.getElementById('front-vlt').value;
+        
+        if (selectedItem && vltVal) {
+            frontStr = `前擋：${formatFilmName(fBrand, fSeries, vltVal)}`;
+        } else {
+            frontStr = `前擋：${fBrand}`;
+        }
     }
 
-    // 車身文字格式化
+    // 車身系統備註格式化
     const bodyBs = document.getElementById('body-brand-series').value;
-    let bodyStr = '';
-    if (bodyBs) {
-        const [bBrand] = bodyBs.split('|');
+    const bodySpecIndex = document.getElementById('body-spec').value;
+    let bodyLines = [];
+    
+    if (bodyBs && bodySpecIndex !== "") {
+        const [bBrand, bSeries] = bodyBs.split('|');
+        const matches = DATABASE.filter(item => item.brand === bBrand && item.part_type === "車身" && item.series === bSeries);
+        const selectedItem = matches[bodySpecIndex];
 
-        if (carModel === "雙廂") {
+        const isDoubleCabinSpec = selectedItem && selectedItem.cars.includes('雙廂') && selectedItem.raw_cars === '雙廂';
+
+        if (isDoubleCabinSpec) {
             const vltFront = document.getElementById('body-vlt-front').value;
             const vltRear = document.getElementById('body-vlt-rear').value;
 
-            if (bBrand === "3M") {
-                if (vltFront && vltFront === vltRear) {
-                    bodyStr = `車身：3M P${vltFront}`;
-                } else {
-                    let parts = [];
-                    if (vltFront) parts.push(`前窗 3M P${vltFront}`);
-                    if (vltRear) parts.push(`後窗 3M P${vltRear}`);
-                    bodyStr = parts.length > 0 ? `車身：${parts.join('、')}` : '車身：3M P';
-                }
-            } else if (bBrand === "Smith") {
-                if (vltFront && vltFront === vltRear) {
-                    bodyStr = `車身：Bella ${vltFront}`;
-                } else {
-                    let parts = [];
-                    if (vltFront) parts.push(`前窗 Bella ${vltFront}`);
-                    if (vltRear) parts.push(`後窗 Bella ${vltRear}`);
-                    bodyStr = parts.length > 0 ? `車身：${parts.join('、')}` : '車身：Bella';
-                }
-            } else if (bBrand === "FSK") {
-                if (vltFront && vltFront === vltRear) {
-                    bodyStr = `車身：FSK KS${vltFront}`;
-                } else {
-                    let parts = [];
-                    if (vltFront) parts.push(`前窗 FSK KS${vltFront}`);
-                    if (vltRear) parts.push(`後窗 FSK KS${vltRear}`);
-                    bodyStr = parts.length > 0 ? `車身：${parts.join('、')}` : '車身：FSK KS';
-                }
-            }
+            const frontName = vltFront ? formatFilmName(bBrand, bSeries, vltFront) : '';
+            const rearName = vltRear ? formatFilmName(bBrand, bSeries, vltRear) : '';
+
+            if (frontName) bodyLines.push(`前窗：${frontName}`);
+            if (rearName) bodyLines.push(`後窗：${rearName}`);
         } else {
-            // 單廂 / 大單廂
             const vltSingle = document.getElementById('body-vlt-single').value;
-            if (bBrand === "3M") {
-                bodyStr = `車身：3M P${vltSingle}`;
-            } else if (bBrand === "Smith") {
-                bodyStr = `車身：Bella ${vltSingle}`;
-            } else if (bBrand === "FSK") {
-                bodyStr = `車身：FSK KS${vltSingle}`;
+            const singleName = vltSingle ? formatFilmName(bBrand, bSeries, vltSingle) : '';
+            if (singleName) {
+                bodyLines.push(`車身：${singleName}`);
+            } else if (bBrand) {
+                bodyLines.push(`車身：${bBrand}`);
             }
         }
     }
 
-    let lines = [
-        `車身碼：${vin}`,
-        `車型：${carModel}`,
-        `車色：${carColor}`,
-        `業代：${salesRep}`,
-        `存放(施工)地點：${location}`,
-        `${frontStr ? frontStr : '前擋：'}`,
-        `${bodyStr ? bodyStr : '車身：'}`,
-        `交車日：${formattedDate}`,
-        `補充事項：${otherInfo}`
-    ];
+    let lines = [];
+    lines.push(`車身碼：${vin}`);
+    lines.push(`車型：${carModel}`);
+    
+    if (carColor) lines.push(`車色：${carColor}`);
+    if (salesRep) lines.push(`業代：${salesRep}`);
+    
+    lines.push(`存放(施工)地點：${location}`);
+    
+    if (frontStr) {
+        lines.push(frontStr);
+    } else {
+        lines.push('前擋：');
+    }
+
+    if (bodyLines.length > 0) {
+        bodyLines.forEach(l => lines.push(l));
+    } else {
+        lines.push('車身：');
+    }
+
+    if (formattedDate) lines.push(`交車日：${formattedDate}`);
+    if (otherInfo) lines.push(`補充事項：${otherInfo}`);
 
     document.getElementById('finalNote').value = lines.join('\n');
 }
@@ -660,17 +811,24 @@ function copyText(elementId) {
         }
 
         const frontBs = document.getElementById('front-brand-series').value;
-
         const bodyBs = document.getElementById('body-brand-series').value;
+        const bodySpecIndex = document.getElementById('body-spec').value;
         let isBodyComplete = false;
 
-        if (carModel === "雙廂") {
-            const bodyVltFront = document.getElementById('body-vlt-front').value;
-            const bodyVltRear = document.getElementById('body-vlt-rear').value;
-            isBodyComplete = bodyBs && bodyVltFront && bodyVltRear;
-        } else {
-            const bodyVltSingle = document.getElementById('body-vlt-single').value;
-            isBodyComplete = bodyBs && bodyVltSingle;
+        if (bodyBs && bodySpecIndex !== "") {
+            const [bBrand, bSeries] = bodyBs.split('|');
+            const matches = DATABASE.filter(item => item.brand === bBrand && item.part_type === "車身" && item.series === bSeries);
+            const selectedItem = matches[bodySpecIndex];
+            const isDoubleCabinSpec = selectedItem && selectedItem.cars.includes('雙廂') && selectedItem.raw_cars === '雙廂';
+
+            if (isDoubleCabinSpec) {
+                const bodyVltFront = document.getElementById('body-vlt-front').value;
+                const bodyVltRear = document.getElementById('body-vlt-rear').value;
+                isBodyComplete = bodyBs && bodyVltFront && bodyVltRear;
+            } else {
+                const bodyVltSingle = document.getElementById('body-vlt-single').value;
+                isBodyComplete = bodyBs && bodyVltSingle;
+            }
         }
 
         if (!frontBs && !bodyBs) {
